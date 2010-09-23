@@ -17,19 +17,63 @@
     var shaderProgram;
 
     var drawOrder = [];
+    var updater = [];
+    var globalData = [];
+    var id = 0;
+
+
     jQuery.fn.obj = function(conf) {
+
       var conf = jQuery.extend({'vertices':[[]], 'shape':gl.TRIANGLE_STRIP },conf); 
 
       var vBuff = createBuffer(conf.vertices, conf.shape);
       var aBuff = createBuffer(conf.attr, conf.shape);
 
-      drawOrder.push({'type':'rawnode', 'data':{'v':vBuff, 'a':aBuff}});
+      drawOrder.push(function(gl){
+        drawBuffer(gl, vBuff, aBuff);
+      });
       return this;
     }
-    jQuery.fn.translate = function(to){
-      drawOrder.push({'type':'translate', 'data':to});
+    function drawScene() {
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+      perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+      loadIdentity();
+
+      for(var i in drawOrder){
+        drawOrder[i](gl);
+      }
+    }
+    function drawBuffer(gl, vertices, attributes){
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
+      gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertices.attrSize, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, attributes);
+      gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, attributes.attrSize, gl.FLOAT, false, 0, 0);
+      setMatrixUniforms();
+      gl.drawArrays(vertices.shape, 0, vertices.size);
+    }
+
+    jQuery.fn.translate = function(to, pre, post){
+      return this.raw(
+        function(gl){
+          glTranslate(to);
+        },pre,post);
+    }
+    jQuery.fn.rotate = function(angle, axis, pre, post){
+      return this.raw(
+        function(gl){
+          glRotate(angle*Math.PI/180.0, axis);
+        },pre,post);
+    }
+    jQuery.fn.raw = function(func, pre, post){
+      if(pre){drawOrder.push(pre);}
+      if(func){drawOrder.push(func);}
+      if(post){drawOrder.push(post);}
       return this;
     }
+
     jQuery.node = function(id){
       return id ? $('<node id="'+id+'"/>') : $('<node/>');
     }
@@ -49,7 +93,7 @@
       mat4.translate(mvMatrix, v);
     }
     function glRotate(angle, axis) {
-      mat4.rotate(mvMatrix, angle, axix);
+      mat4.rotate(mvMatrix, angle, axis);
     }
    
     function perspective(fovy, aspect, znear, zfar) {
@@ -64,6 +108,9 @@
 
 
    jQuery.fn.jgl = function(conf) {
+     conf = jQuery.extend({
+         'interval':15
+         },conf);
      var canvas = this[0];
 
      gl = canvas.getContext('experimental-webgl');
@@ -107,7 +154,7 @@ void main(void) {\n\
      gl.enable(gl.DEPTH_TEST);
      gl.depthFunc(gl.LEQUAL);
    
-     setInterval(drawScene, 15);
+     setInterval(drawScene, conf.interval);
 
      return this;
    };
@@ -169,36 +216,6 @@ void main(void) {\n\
     return null;
   }
 
-
-  var operations = {
-    'rawnode':drawBuffer,
-    'translate':glTranslate
-  }
-
-  function drawScene() {
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
-    perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
-
-    loadIdentity();
-
-    for(var i in drawOrder){
-      var operation = drawOrder[i];
-      operations[operation.type](operation.data);
-    }
-  }
-
-
-  function drawBuffer(data){
-    gl.bindBuffer(gl.ARRAY_BUFFER, data.v);
-    gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, data.v.attrSize, gl.FLOAT, false, 0, 0);
-    gl.bindBuffer(gl.ARRAY_BUFFER, data.a);
-    gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, data.a.attrSize, gl.FLOAT, false, 0, 0);
-    setMatrixUniforms();
-    gl.drawArrays(data.v.shape, 0, data.v.size);
-  }
-
   function createBuffer(data, shape) {
     if( data.length > 0 && data[0] && data[0].length > 0){
       var attrSize = data[0].length
@@ -216,25 +233,6 @@ void main(void) {\n\
     }
     return null;
   }
-
-  /*
-  function createBuffer(conf){
-    var conf = jQuery.extend( { 'vertices':[[]], 'type':gl.TRIANGLE_STRIP },conf); 
-    var dim = conf.vertices[0].length
-    var v = conf.vertices.reduce(function(a,b){return a.concat(b)});
-
-    var buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new glMatrixArrayType(v), gl.STATIC_DRAW);
-
-    buffer.itemSize = dim;
-    buffer.numItems = v.length/dim;
-    buffer.type = conf.type;
-
-    return buffer;
-  }
-  */
-
 
   })(jQuery);
 </script>
@@ -267,10 +265,15 @@ void main(void) {\n\
          ]
       }
 
+      var i = 0;
+      var rupdater= function(gl){
+        i += 1;
+      }
 
 
       var root = $('#lesson01-canvas').jgl();
       root
+      .rotate(i,[0,0,1], rupdater)
       .translate([-1.5, 0.0, -7.0])
       .obj(triangle)
       .translate([3.0, 0.0, 0.0])
