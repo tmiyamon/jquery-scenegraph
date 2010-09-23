@@ -22,17 +22,17 @@
     var id = 0;
 
 
-    jQuery.fn.obj = function(conf) {
+    jQuery.fn.obj = function(conf, pre, post) {
 
       var conf = jQuery.extend({'vertices':[[]], 'shape':gl.TRIANGLE_STRIP },conf); 
 
       var vBuff = createBuffer(conf.vertices, conf.shape);
       var aBuff = createBuffer(conf.attr, conf.shape);
 
-      drawOrder.push(function(gl){
-        drawBuffer(gl, vBuff, aBuff);
-      });
-      return this;
+      return this.raw(function(gl, data){
+        drawBuffer(gl, data.vBuff, data.aBuff);
+        },{'vBuff':vBuff, 'aBuff':aBuff}, pre, post);
+
     }
     function drawScene() {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -43,8 +43,11 @@
       loadIdentity();
 
       for(var i in drawOrder){
-        drawOrder[i](gl);
+        var id = drawOrder[i][0];
+        var func = drawOrder[i][1];
+        func(gl, globalData[id]);
       }
+
     }
     function drawBuffer(gl, vertices, attributes){
       gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
@@ -54,23 +57,26 @@
       setMatrixUniforms();
       gl.drawArrays(vertices.shape, 0, vertices.size);
     }
+    jQuery.fn.translate = function(conf, pre, post){
+      return this.raw(
+        function(gl, data){
+          glTranslate(data.to);
+          },conf,pre,post);
+    }
 
-    jQuery.fn.translate = function(to, pre, post){
+    jQuery.fn.rotate = function(conf, pre, post){
       return this.raw(
-        function(gl){
-          glTranslate(to);
-        },pre,post);
+        function(gl, data){
+          glRotate(data.angle*Math.PI/180.0, data.axis);
+          },conf,pre,post);
     }
-    jQuery.fn.rotate = function(angle, axis, pre, post){
-      return this.raw(
-        function(gl){
-          glRotate(angle*Math.PI/180.0, axis);
-        },pre,post);
-    }
-    jQuery.fn.raw = function(func, pre, post){
-      if(pre){drawOrder.push(pre);}
-      if(func){drawOrder.push(func);}
-      if(post){drawOrder.push(post);}
+
+    jQuery.fn.raw = function(func, conf, pre, post){
+      id += 1;
+      globalData[id] = conf;
+      if(pre){drawOrder.push([id, pre]);}
+      if(func){drawOrder.push([id, func]);}
+      if(post){drawOrder.push([id, post]);}
       return this;
     }
 
@@ -264,20 +270,17 @@ void main(void) {\n\
            [0.5, 1.0, 1.0, 1.0]
          ]
       }
-
-      var i = 0;
-      var rupdater= function(gl){
-        i += 1;
+      var rupdater = function(gl, data){
+        data.angle += 1;
       }
-
 
       var root = $('#lesson01-canvas').jgl();
       root
-      .rotate(i,[0,0,1], rupdater)
-      .translate([-1.5, 0.0, -7.0])
-      .obj(triangle)
-      .translate([3.0, 0.0, 0.0])
-      .obj(square);
+        .translate({'to':[-1.5, 0.0, -7.0]})
+        .obj(triangle)
+        .translate({'to':[3.0, 0.0, 0.0]})
+        .rotate({'angle':0,'axis':[0,0,1]}, rupdater)
+        .obj(square);
 
   });
 </script>
@@ -286,23 +289,8 @@ void main(void) {\n\
  
  
 <body onload="$('#lesson01-canvas').jgl();"> 
-  <a href="http://learningwebgl.com/blog/?p=28">&lt;&lt; Back to Lesson 1</a><br /> 
- 
   <canvas id="lesson01-canvas" style="border: none;" width="500" height="500"></canvas> 
- 
-  <br/> 
-  <a href="http://learningwebgl.com/blog/?p=28">&lt;&lt; Back to Lesson 1</a><br /> 
- 
-<!-- Google Analytics stuff, please ignore - nothing to do with WebGL :-) --> 
-<script type="text/javascript"> 
-var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
-document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
-</script> 
-<script type="text/javascript"> 
-try {
-var pageTracker = _gat._getTracker("UA-2240015-5");
-pageTracker._trackPageview();
-} catch(err) {}</script> 
+<br/> 
  
 </body> 
  
