@@ -1,0 +1,306 @@
+
+<html> 
+ 
+<head> 
+<title>Learning WebGL &mdash; lesson 1</title> 
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"> 
+ 
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript">google.load("jquery", "1.4");</script>
+<script type="text/javascript" src="http://glmatrix.googlecode.com/files/glMatrix-0.9.4.min.js"></script>
+ 
+<script type="text/javascript">
+  (function(jQuery) {
+    var gl;
+    var mvMatrix;
+    var pMatrix;
+    var shaderProgram;
+
+    var drawOrder = [];
+    jQuery.fn.obj = function(conf) {
+      var conf = jQuery.extend({'vertices':[[]], 'shape':gl.TRIANGLE_STRIP },conf); 
+
+      var vBuff = createBuffer(conf.vertices, conf.shape);
+      var aBuff = createBuffer(conf.attr, conf.shape);
+
+      drawOrder.push({'type':'rawnode', 'data':{'v':vBuff, 'a':aBuff}});
+      return this;
+    }
+    jQuery.fn.translate = function(to){
+      drawOrder.push({'type':'translate', 'data':to});
+      return this;
+    }
+    jQuery.node = function(id){
+      return id ? $('<node id="'+id+'"/>') : $('<node/>');
+    }
+ 
+
+    function loadIdentity() {
+      mvMatrix = mat4.identity([]);
+    }
+   
+   
+    function multMatrix(m) {
+      mvMatrix = mvMatrix.x(m);
+    }
+   
+   
+    function glTranslate(v) {
+      mat4.translate(mvMatrix, v);
+    }
+    function glRotate(angle, axis) {
+      mat4.rotate(mvMatrix, angle, axix);
+    }
+   
+    function perspective(fovy, aspect, znear, zfar) {
+      pMatrix = mat4.perspective(fovy, aspect, znear, zfar);
+    }
+   
+   
+    function setMatrixUniforms() {
+      gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+      gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+
+   jQuery.fn.jgl = function(conf) {
+     var canvas = this[0];
+
+     gl = canvas.getContext('experimental-webgl');
+     gl.viewportWidth = canvas.width;
+     gl.viewportHeight=  canvas.height;
+
+     var fshaderText = '\
+#ifdef GL_ES\n\
+precision highp float;\n\
+#endif\n\
+\n\
+varying vec4 vColor;\n\
+\n\
+void main(void) {\n\
+  gl_FragColor = vColor;\n\
+}';
+
+
+      var vshaderText = '\n\
+attribute vec3 aVertexPosition;\n\
+attribute vec4 aVertexColor;\n\
+\n\
+uniform mat4 uMVMatrix;\n\
+uniform mat4 uPMatrix;\n\
+\n\
+varying vec4 vColor;\n\
+\n\
+void main(void) {\n\
+  gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);\n\
+  vColor = aVertexColor;\n\
+}';
+     var fs = buildShader(gl, fshaderText, gl.FRAGMENT_SHADER); 
+     var vs = buildShader(gl, vshaderText, gl.VERTEX_SHADER);
+
+     initShaders(fs, vs);
+   
+     gl.clearColor(0.0, 0.0, 0.0, 1.0);
+   
+     gl.clearDepth(1.0);
+   
+     gl.enable(gl.DEPTH_TEST);
+     gl.depthFunc(gl.LEQUAL);
+   
+     setInterval(drawScene, 15);
+
+     return this;
+   };
+  function buildShader(gl, text, type) {
+    var shader = gl.createShader(type);
+ 
+    gl.shaderSource(shader, text);
+    gl.compileShader(shader);
+ 
+    if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      return shader;
+    }
+ 
+    alert(gl.getShaderInfoLog(shader));
+  }
+
+  function initShaders(fs, vs) {
+    shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, fs);
+    gl.attachShader(shaderProgram, vs);
+    gl.linkProgram(shaderProgram);
+ 
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+      alert("Could not initialise shaders");
+    }
+ 
+    gl.useProgram(shaderProgram);
+ 
+    shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+    gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+    shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, 'aVertexColor');
+    gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+ 
+    shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+    shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+  }
+
+  function getShader(gl, id) {
+    var shaderScript = $(id);
+
+    if (shaderScript.length > 0) {
+      var str = shaderScript.text();
+      console.log(str);
+      var shaderType = {
+        "x-shader/x-fragment":gl.FRAGMENT_SHADER,
+        "x-shader/x-vertex":gl.VERTEX_SHADER
+      }
+      var shader = gl.createShader(shaderType[shaderScript.attr('type')]);
+   
+      gl.shaderSource(shader, str);
+      gl.compileShader(shader);
+   
+      if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        return shader;
+      }
+   
+      alert(gl.getShaderInfoLog(shader));
+    }
+    return null;
+  }
+
+
+  var operations = {
+    'rawnode':drawBuffer,
+    'translate':glTranslate
+  }
+
+  function drawScene() {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+    perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+    loadIdentity();
+
+    for(var i in drawOrder){
+      var operation = drawOrder[i];
+      operations[operation.type](operation.data);
+    }
+  }
+
+
+  function drawBuffer(data){
+    gl.bindBuffer(gl.ARRAY_BUFFER, data.v);
+    gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, data.v.attrSize, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, data.a);
+    gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, data.a.attrSize, gl.FLOAT, false, 0, 0);
+    setMatrixUniforms();
+    gl.drawArrays(data.v.shape, 0, data.v.size);
+  }
+
+  function createBuffer(data, shape) {
+    if( data.length > 0 && data[0] && data[0].length > 0){
+      var attrSize = data[0].length
+      var v = data.reduce(function(a,b){return a.concat(b)});
+
+      var buffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new glMatrixArrayType(v), gl.STATIC_DRAW);
+
+      buffer.attrSize = attrSize;
+      buffer.size = v.length/attrSize;
+      buffer.shape = shape;
+
+      return buffer;
+    }
+    return null;
+  }
+
+  /*
+  function createBuffer(conf){
+    var conf = jQuery.extend( { 'vertices':[[]], 'type':gl.TRIANGLE_STRIP },conf); 
+    var dim = conf.vertices[0].length
+    var v = conf.vertices.reduce(function(a,b){return a.concat(b)});
+
+    var buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new glMatrixArrayType(v), gl.STATIC_DRAW);
+
+    buffer.itemSize = dim;
+    buffer.numItems = v.length/dim;
+    buffer.type = conf.type;
+
+    return buffer;
+  }
+  */
+
+
+  })(jQuery);
+</script>
+
+<script type='text/javascript'>
+  $(document).ready(function(){
+
+      var triangle = {
+        'vertices':[
+           [0.0,  1.0,  0.0],
+           [-1.0, -1.0,  0.0],
+           [1.0, -1.0,  0.0]
+        ],'attr':[
+           [1.0, 0.0, 0.0, 1.0],
+           [0.0, 1.0, 0.0, 1.0],
+           [0.0, 0.0, 1.0, 1.0]
+        ]
+      };
+      var square = {
+        'vertices':[
+           [1.0,  1.0,  0.0],
+           [-1.0,  1.0,  0.0],
+           [1.0, -1.0,  0.0],
+           [-1.0, -1.0,  0.0]
+         ],'attr': [
+           [0.5, 0.5, 1.0, 1.0],
+           [0.5, 0.5, 1.0, 1.0],
+           [0.5, 0.5, 1.0, 1.0],
+           [0.5, 1.0, 1.0, 1.0]
+         ]
+      }
+
+
+
+      var root = $('#lesson01-canvas').jgl();
+      root
+      .translate([-1.5, 0.0, -7.0])
+      .obj(triangle)
+      .translate([3.0, 0.0, 0.0])
+      .obj(square);
+
+  });
+</script>
+ 
+</head> 
+ 
+ 
+<body onload="$('#lesson01-canvas').jgl();"> 
+  <a href="http://learningwebgl.com/blog/?p=28">&lt;&lt; Back to Lesson 1</a><br /> 
+ 
+  <canvas id="lesson01-canvas" style="border: none;" width="500" height="500"></canvas> 
+ 
+  <br/> 
+  <a href="http://learningwebgl.com/blog/?p=28">&lt;&lt; Back to Lesson 1</a><br /> 
+ 
+<!-- Google Analytics stuff, please ignore - nothing to do with WebGL :-) --> 
+<script type="text/javascript"> 
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script> 
+<script type="text/javascript"> 
+try {
+var pageTracker = _gat._getTracker("UA-2240015-5");
+pageTracker._trackPageview();
+} catch(err) {}</script> 
+ 
+</body> 
+ 
+</html> 
