@@ -2,19 +2,22 @@
 <html> 
  
 <head> 
-<title>Learning WebGL &mdash; lesson 1</title> 
+<title>JQuery webgl Sample</title> 
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"> 
  
 <script type="text/javascript" src="http://www.google.com/jsapi"></script>
 <script type="text/javascript">google.load("jquery", "1.4");</script>
 <script type="text/javascript" src="http://glmatrix.googlecode.com/files/glMatrix-0.9.4.min.js"></script>
+
+
  
 <script type="text/javascript">
   (function(jQuery) {
     var gl;
     var mvMatrix;
+    var mvMatrixStack = [];
     var pMatrix;
-    var shaderProgram;
+    var shader;
 
     var drawOrder = [];
     var updater = [];
@@ -42,7 +45,7 @@
 
       loadIdentity();
 
-      for(var i in drawOrder){
+      for(var i = 0; i < drawOrder.length; i++){
         var id = drawOrder[i][0];
         var func = drawOrder[i][1];
         func(gl, globalData[id]);
@@ -51,9 +54,9 @@
     }
     function drawBuffer(gl, vertices, attributes){
       gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
-      gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, vertices.attrSize, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribPointer(shader.vertexPositionAttribute, vertices.attrSize, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, attributes);
-      gl.vertexAttribPointer(shaderProgram.vertexColorAttribute, attributes.attrSize, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribPointer(shader.vertexColorAttribute, attributes.attrSize, gl.FLOAT, false, 0, 0);
       setMatrixUniforms();
       gl.drawArrays(vertices.shape, 0, vertices.size);
     }
@@ -88,28 +91,38 @@
     function loadIdentity() {
       mvMatrix = mat4.identity([]);
     }
-   
-   
     function multMatrix(m) {
       mvMatrix = mvMatrix.x(m);
     }
-   
-   
     function glTranslate(v) {
       mat4.translate(mvMatrix, v);
     }
     function glRotate(angle, axis) {
       mat4.rotate(mvMatrix, angle, axis);
     }
-   
+    function glPushMatrix(m) {
+      if(m){
+        mvMatrixStack.push(m.dup());
+        mvMatrix = m.dup();
+      }else{
+        mvMatrixStack.push(mvMatrix.dup());
+      }
+    }
+    function glPopMatrix(m){
+      if(mvMatrixStack.length == 0){
+        throw "No element!";
+      }
+      mvMatrix = mvMatrixStack.pop();
+      return mvMatrix;
+    }
     function perspective(fovy, aspect, znear, zfar) {
       pMatrix = mat4.perspective(fovy, aspect, znear, zfar);
     }
    
    
     function setMatrixUniforms() {
-      gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
-      gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+      gl.uniformMatrix4fv(shader.pMatrixUniform, false, pMatrix);
+      gl.uniformMatrix4fv(shader.mvMatrixUniform, false, mvMatrix);
     }
 
 
@@ -178,24 +191,24 @@ void main(void) {\n\
   }
 
   function initShaders(fs, vs) {
-    shaderProgram = gl.createProgram();
-    gl.attachShader(shaderProgram, fs);
-    gl.attachShader(shaderProgram, vs);
-    gl.linkProgram(shaderProgram);
+    shader = gl.createProgram();
+    gl.attachShader(shader, fs);
+    gl.attachShader(shader, vs);
+    gl.linkProgram(shader);
  
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+    if (!gl.getProgramParameter(shader, gl.LINK_STATUS)) {
       alert("Could not initialise shaders");
     }
  
-    gl.useProgram(shaderProgram);
+    gl.useProgram(shader);
  
-    shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
-    gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
-    shaderProgram.vertexColorAttribute = gl.getAttribLocation(shaderProgram, 'aVertexColor');
-    gl.enableVertexAttribArray(shaderProgram.vertexColorAttribute);
+    shader.vertexPositionAttribute = gl.getAttribLocation(shader, "aVertexPosition");
+    gl.enableVertexAttribArray(shader.vertexPositionAttribute);
+    shader.vertexColorAttribute = gl.getAttribLocation(shader, 'aVertexColor');
+    gl.enableVertexAttribArray(shader.vertexColorAttribute);
  
-    shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
-    shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    shader.pMatrixUniform = gl.getUniformLocation(shader, "uPMatrix");
+    shader.mvMatrixUniform = gl.getUniformLocation(shader, "uMVMatrix");
   }
 
   function getShader(gl, id) {
@@ -273,6 +286,7 @@ void main(void) {\n\
       var rupdater = function(gl, data){
         data.angle += 1;
       }
+
 
       var root = $('#lesson01-canvas').jgl();
       root
