@@ -24,19 +24,48 @@
     var globalData = [];
     var id = 0;
 
-
     jQuery.fn.obj = function(conf, pre, post) {
-
       var conf = jQuery.extend({'vertices':[[]], 'shape':gl.TRIANGLE_STRIP },conf); 
+      globalData.conf = conf;
 
       var vBuff = createBuffer(conf.vertices, conf.shape);
       var aBuff = createBuffer(conf.attr, conf.shape);
 
-      return this.raw(function(gl, data){
-        drawBuffer(gl, data.vBuff, data.aBuff);
+      return this.raw(
+        function(gl, data){
+          drawBuffer(gl, data.vBuff, data.aBuff);
         },{'vBuff':vBuff, 'aBuff':aBuff}, pre, post);
 
     }
+    jQuery.fn.translate = function(conf, pre, post){
+      return this.raw(
+        function(gl, data){
+          glTranslate(data.to);
+        },conf,pre,post);
+    }
+
+    jQuery.fn.rotate = function(conf, pre, post){
+      return this.raw(
+        function(gl, data){
+          glRotate(data.angle*Math.PI/180.0, data.axis);
+        },conf,pre,post);
+    }
+
+    jQuery.fn.raw = function(func, conf, pre, post){
+      id += 1;
+      globalData[id] = conf;
+      if(pre){drawOrder.push([id, pre]);}
+      if(func){drawOrder.push([id, func]);}
+      if(post){drawOrder.push([id, post]);}
+      return this;
+    }
+    jQuery.fn.node = function(){
+      var child = $('<node/>'); 
+      child.drawOrder = [];
+
+      return this.append(child);
+    }
+
     function drawScene() {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -50,81 +79,7 @@
         var func = drawOrder[i][1];
         func(gl, globalData[id]);
       }
-
     }
-    function drawBuffer(gl, vertices, attributes){
-      gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
-      gl.vertexAttribPointer(shader.vertexPositionAttribute, vertices.attrSize, gl.FLOAT, false, 0, 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, attributes);
-      gl.vertexAttribPointer(shader.vertexColorAttribute, attributes.attrSize, gl.FLOAT, false, 0, 0);
-      setMatrixUniforms();
-      gl.drawArrays(vertices.shape, 0, vertices.size);
-    }
-    jQuery.fn.translate = function(conf, pre, post){
-      return this.raw(
-        function(gl, data){
-          glTranslate(data.to);
-          },conf,pre,post);
-    }
-
-    jQuery.fn.rotate = function(conf, pre, post){
-      return this.raw(
-        function(gl, data){
-          glRotate(data.angle*Math.PI/180.0, data.axis);
-          },conf,pre,post);
-    }
-
-    jQuery.fn.raw = function(func, conf, pre, post){
-      id += 1;
-      globalData[id] = conf;
-      if(pre){drawOrder.push([id, pre]);}
-      if(func){drawOrder.push([id, func]);}
-      if(post){drawOrder.push([id, post]);}
-      return this;
-    }
-
-    jQuery.node = function(id){
-      return id ? $('<node id="'+id+'"/>') : $('<node/>');
-    }
- 
-
-    function loadIdentity() {
-      mvMatrix = mat4.identity([]);
-    }
-    function multMatrix(m) {
-      mvMatrix = mvMatrix.x(m);
-    }
-    function glTranslate(v) {
-      mat4.translate(mvMatrix, v);
-    }
-    function glRotate(angle, axis) {
-      mat4.rotate(mvMatrix, angle, axis);
-    }
-    function glPushMatrix(m) {
-      if(m){
-        mvMatrixStack.push(m.dup());
-        mvMatrix = m.dup();
-      }else{
-        mvMatrixStack.push(mvMatrix.dup());
-      }
-    }
-    function glPopMatrix(m){
-      if(mvMatrixStack.length == 0){
-        throw "No element!";
-      }
-      mvMatrix = mvMatrixStack.pop();
-      return mvMatrix;
-    }
-    function perspective(fovy, aspect, znear, zfar) {
-      pMatrix = mat4.perspective(fovy, aspect, znear, zfar);
-    }
-   
-   
-    function setMatrixUniforms() {
-      gl.uniformMatrix4fv(shader.pMatrixUniform, false, pMatrix);
-      gl.uniformMatrix4fv(shader.mvMatrixUniform, false, mvMatrix);
-    }
-
 
    jQuery.fn.jgl = function(conf) {
      conf = jQuery.extend({
@@ -173,10 +128,58 @@ void main(void) {\n\
      gl.enable(gl.DEPTH_TEST);
      gl.depthFunc(gl.LEQUAL);
    
-     setInterval(drawScene, conf.interval);
-
      return this;
    };
+   jQuery.fn.start = function(){
+     setInterval(drawScene, globalData.conf.interval);
+   }
+    function drawBuffer(gl, vertices, attributes){
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertices);
+      gl.vertexAttribPointer(shader.vertexPositionAttribute, vertices.attrSize, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, attributes);
+      gl.vertexAttribPointer(shader.vertexColorAttribute, attributes.attrSize, gl.FLOAT, false, 0, 0);
+      setMatrixUniforms();
+      gl.drawArrays(vertices.shape, 0, vertices.size);
+    }
+
+    function loadIdentity() {
+      mvMatrix = mat4.identity([]);
+    }
+    function multMatrix(m) {
+      mvMatrix = mvMatrix.x(m);
+    }
+    function glTranslate(v) {
+      mat4.translate(mvMatrix, v);
+    }
+    function glRotate(angle, axis) {
+      mat4.rotate(mvMatrix, angle, axis);
+    }
+    function glPushMatrix(m) {
+      if(m){
+        mvMatrixStack.push(m.dup());
+        mvMatrix = m.dup();
+      }else{
+        mvMatrixStack.push(mvMatrix.dup());
+      }
+    }
+    function glPopMatrix(){
+      if(mvMatrixStack.length == 0){
+        throw "No element!";
+      }
+      mvMatrix = mvMatrixStack.pop();
+      return mvMatrix;
+    }
+    function perspective(fovy, aspect, znear, zfar) {
+      pMatrix = mat4.perspective(fovy, aspect, znear, zfar);
+    }
+   
+   
+    function setMatrixUniforms() {
+      gl.uniformMatrix4fv(shader.pMatrixUniform, false, pMatrix);
+      gl.uniformMatrix4fv(shader.mvMatrixUniform, false, mvMatrix);
+    }
+
+
   function buildShader(gl, text, type) {
     var shader = gl.createShader(type);
  
@@ -283,18 +286,23 @@ void main(void) {\n\
            [0.5, 1.0, 1.0, 1.0]
          ]
       }
-      var rupdater = function(gl, data){
+      var rupdater1 = function(gl, data){
         data.angle += 1;
+      }
+      var rupdater2 = function(gl, data){
+        data.angle += 2;
       }
 
 
       var root = $('#lesson01-canvas').jgl();
       root
         .translate({'to':[-1.5, 0.0, -7.0]})
+        .rotate({'angle':0,'axis':[0,0,1]}, rupdater1)
         .obj(triangle)
         .translate({'to':[3.0, 0.0, 0.0]})
-        .rotate({'angle':0,'axis':[0,0,1]}, rupdater)
-        .obj(square);
+        .rotate({'angle':0,'axis':[0,0,1]}, rupdater2)
+        .obj(square).
+      start();
 
   });
 </script>
